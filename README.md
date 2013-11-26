@@ -1,0 +1,4 @@
+japSegmenter
+============
+
+Japanese sentences segmentation 

@@ -7,7 +7,7 @@ japanese segmentation
 
 usage:
 
-python3.2 mySegmenter.py <trainfile> <testfile>
+python mySegmenter.py <trainfile> <testfile>
 
 '''
 
@@ -20,68 +20,13 @@ import xml.sax
 import codecs
 import operator
 from collections import defaultdict
-
-
-'''
-# test on ONE char
-def test(model,filenameTest):
-	foundSentences = []
-	tree = ET.parse(filenameTest)
-	root = tree.getroot()
-	for s in root.findall('sentence'):
-		rawtext = s.find('raw').text
-		cstate = 'B'
-		myToken = ''
-		mySentence = []
-		for i in range(0, len(rawtext)):
-			c = rawtext[i]
-			if (mostProbable(model,cstate,c)) == 'B':
-				myToken += c
-				mySentence.append(myToken)
-				myToken = ''
-				cstate = 'B'
-			elif (mostProbable(model,cstate,c)) == 'C':
-				myToken += c
-				cstate = 'C'
-		foundSentences.append(mySentence)
-
-	handle = codecs.open("grotest", 'w', 'utf-8')
-	handle.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
-	handle.write('<dataset>\n')
-	for i in range(len(foundSentences)):
-	    segmented_sentence = " ".join(foundSentences[i])
-	    handle.write('\t<sentence sid="'+str(i)+'">\n')
-	    handle.write('\t\t<raw>'+segmented_sentence+'</raw>\n')
-	    handle.write('\t</sentence>\n')
-	handle.write('</dataset>')
-	handle.close()
-'''
-
-'''
-# observations on ONE char aat
-def train(sentences):
-	obs = defaultdict(lambda: defaultdict(lambda: 0))
-	tr = {}
-	for raw,indices in sentences:
-		j = 0
-		i = 0
-		while i < len(raw) - 1:
-			w1 = raw[i]
-			if indices[j] == i+1:
-				obs[w1]['B'] += 1
-				j += 1
-			else:
-				obs[w1]['C'] += 1
-			i += 1
-	return obs
-'''
-
-
+from progressbar import ProgressBar,Percentage,Bar
 
 
 
 # load [raw,segmentation indices]
 def loadTrainSentences(filenameTrain):
+	print("Loading train sentences...")
 	sentences = []
 	tree = ET.parse(filenameTrain)
 	root = tree.getroot()
@@ -101,37 +46,38 @@ def loadTrainSentences(filenameTrain):
 
 # observations on bigrams
 def train(sentences):
+	print("Training the model...")
 	obs = defaultdict(lambda: defaultdict(lambda: 1))
+	prevObs = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 1)))
 	tr = defaultdict(lambda: defaultdict(lambda: 0))
-	nb = 0
+	prevBigram = "start"
 	for raw,indices in sentences:
 		j = 0
 		i = 0
 		cstate = 'B'
 		while i < len(raw) - 1:
-			bigram = raw[i]+raw[i+1]
+			bigram = raw[i:i+2]
 			if indices[j] == i+1:
 				obs['B'][bigram] += 1
 				j += 1
 				tr[cstate]['B'] += 1
 				cstate = 'B'
+				prevObs['B'][bigram][prevBigram] += 1
 			else:
 				obs['C'][bigram] += 1
 				tr[cstate]['C'] += 1
 				cstate = 'C'
+				prevObs['C'][bigram][prevBigram] += 1
 			i += 1
-			nb += 1
-	#for a in tr:
-	#	for b in tr[a]:
-	#		tmp = float(tr[a][b]/nb)
-	#		tr[a][b] = tmp 
-	return list([obs,tr])
+			prevBigram = bigram
+
+	return list([obs,tr,prevObs])
 
 
 
 
 # most probable state for this bigram observation
-def mostProbable(model,cstate,bigram):
+def mostProbable(model,cstate,bigram,prevBigram):
 	otherState = 'B' if cstate == 'C' else 'C' 
 	d = False
 	if not bigram in model[0]['B'] or not bigram in model[0]['C']:
@@ -145,15 +91,15 @@ def mostProbable(model,cstate,bigram):
 			if bigram[0] in bg or bigram[1] in bg:
 				oPb += 1
 
-		cstatePb = model[1][cstate][cstate] * cPb
-		otherStatePb = model[1][cstate][otherState] * oPb
+		cstatePb = model[2][cstate][prevBigram][bigram] * model[1][cstate][cstate] * cPb
+		otherStatePb = model[2][otherState][prevBigram][bigram] * model[1][cstate][otherState] * oPb
 		if abs((float(min(cstatePb,otherStatePb)) / max(cstatePb,otherStatePb))) < 0.3:
 			d = True
 	
 	if not d:
 		#print("IN dict") 
-		cstatePb = model[1][cstate][cstate] * model[0][cstate][bigram]
-		otherStatePb = model[1][cstate][otherState] * model[0][otherState][bigram]
+		cstatePb = model[2][cstate][prevBigram][bigram] * model[1][cstate][cstate] * model[0][cstate][bigram]
+		otherStatePb = model[2][otherState][prevBigram][bigram] * model[1][cstate][otherState] * model[0][otherState][bigram]
 	
 	maxState = cstate if cstatePb > otherStatePb else otherState
 	return maxState
@@ -162,9 +108,13 @@ def mostProbable(model,cstate,bigram):
 
 
 def test(model,filenameTest):
+	print("Running the test...")
 	foundSentences = []
 	tree = ET.parse(filenameTest)
 	root = tree.getroot()
+	pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=len(root.findall('sentence'))).start()
+	k = 0
+	pvBg = "start"
 	for s in root.findall('sentence'):
 		rawtext = s.find('raw').text
 		cstate = 'B'
@@ -172,12 +122,13 @@ def test(model,filenameTest):
 		indices = []
 		i = 0
 		while i < len(rawtext) - 1:
-			bg = rawtext[i]+rawtext[i+1]
-			if (mostProbable(model,cstate,bg)) == 'B':
+			bg = rawtext[i:i+2]
+			if (mostProbable(model,cstate,bg,pvBg)) == 'B':
 				indices.append(i+1)
-			#elif (mostProbable(model,cstate,bg)) == 'C':
-
 			i += 1
+			pvBg = bg
+		k += 1
+		pbar.update(k)
 		indices.append(len(rawtext))
 		mySentence = sentencizer(rawtext,indices)
 		foundSentences.append(mySentence)
@@ -212,7 +163,10 @@ def sentencizer(raw,indices):
 
 
 
+
 ##############################################################################
+
+
 
 def main():
 	sentences = loadTrainSentences(sys.argv[1])

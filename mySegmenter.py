@@ -77,7 +77,25 @@ def train(sentences):
 
 
 # most probable state for this bigram observation
-def mostProbable(model,cstate,bigram,prevBigram):
+def mostProbablePath(model,bigrams):
+	paths = {}
+	cstate = 'B'
+	pvBg = "start"
+	for bg in bigrams:
+		if paths == {}:
+			paths = nextProbas(model,cstate,bg,pvBg)
+		else:
+			newPaths = {}
+			for p in paths:
+				probas = nextProbas(model,cstate,bg,pvBg)
+				for state in probas:
+					newPaths[p+state] = probas[state] * paths[p]
+
+
+
+
+
+def nextProba(model,cstate,bg,prevBg):
 	otherState = 'B' if cstate == 'C' else 'C' 
 	d = False
 	if not bigram in model[0]['B'] or not bigram in model[0]['C']:
@@ -101,8 +119,40 @@ def mostProbable(model,cstate,bigram,prevBigram):
 		cstatePb = model[2][cstate][prevBigram][bigram] * model[1][cstate][cstate] * model[0][cstate][bigram]
 		otherStatePb = model[2][otherState][prevBigram][bigram] * model[1][cstate][otherState] * model[0][otherState][bigram]
 	
-	maxState = cstate if cstatePb > otherStatePb else otherState
-	return maxState
+	#maxPb = cstatePb if cstatePb > otherStatePb else otherStatePb
+	#maxState = cstate if cstatePb > otherStatePb else otherState
+	return dict({cstate:cstatePb,otherState:otherStatePb})
+
+
+'''
+def nextProbas(model,cstate,bg,prevBg):
+	otherState = 'B' if cstate == 'C' else 'C' 
+	d = False
+	if not bigram in model[0]['B'] or not bigram in model[0]['C']:
+		#print("NOT in dict")
+		cPb = 1
+		for bg in model[0][cstate]:
+			if bigram[0] in bg or bigram[1] in bg:
+				cPb += 1
+		oPb = 1
+		for bg in model[0][otherState]:
+			if bigram[0] in bg or bigram[1] in bg:
+				oPb += 1
+
+		cstatePb = model[2][cstate][prevBigram][bigram] * model[1][cstate][cstate] * cPb
+		otherStatePb = model[2][otherState][prevBigram][bigram] * model[1][cstate][otherState] * oPb
+		if abs((float(min(cstatePb,otherStatePb)) / max(cstatePb,otherStatePb))) < 0.3:
+			d = True
+	
+	if not d:
+		#print("IN dict") 
+		cstatePb = model[2][cstate][prevBigram][bigram] * model[1][cstate][cstate] * model[0][cstate][bigram]
+		otherStatePb = model[2][otherState][prevBigram][bigram] * model[1][cstate][otherState] * model[0][otherState][bigram]
+	
+	#maxPb = cstatePb if cstatePb > otherStatePb else otherStatePb
+	#maxState = cstate if cstatePb > otherStatePb else otherState
+	return dict({cstate:cstatePb,otherState:otherStatePb})
+'''
 
 
 
@@ -117,21 +167,30 @@ def test(model,filenameTest):
 	pvBg = "start"
 	for s in root.findall('sentence'):
 		rawtext = s.find('raw').text
-		cstate = 'B'
-		myToken = ''
-		indices = []
+		#cstate = 'B'
+		#myToken = ''
+		#indices = []
+		bigrams = []
 		i = 0
 		while i < len(rawtext) - 1:
 			bg = rawtext[i:i+2]
-			if (mostProbable(model,cstate,bg,pvBg)) == 'B':
-				indices.append(i+1)
-			i += 1
-			pvBg = bg
-		k += 1
-		pbar.update(k)
+			bigrams.append(bg)
+
+			#if (mostProbable(model,cstate,bg,pvBg)) == 'B':
+			#	indices.append(i+1)
+			#i += 1
+			#pvBg = bg
+
+		paths = buildPaths(model,bigrams)
+		path = mostProbablePath(paths)
+		indices = indicesFromPath(path)
+
 		indices.append(len(rawtext))
 		mySentence = sentencizer(rawtext,indices)
 		foundSentences.append(mySentence)
+
+		k += 1
+		pbar.update(k)
 
 	handle = codecs.open("grotest.xml", 'w', 'utf-8')
 	handle.write('<?xml version="1.0" encoding="UTF-8" ?>\n')

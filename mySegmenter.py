@@ -2,15 +2,13 @@
 # -*- coding: utf-8 -*-
 
 '''
-
 japanese segmentation
 
 usage:
-
 python mySegmenter.py <trainfile> <testfile>
 
+author: j. lark
 '''
-
 
 import sys
 import xml.etree.ElementTree as ET
@@ -23,8 +21,7 @@ from collections import defaultdict
 from progressbar import ProgressBar,Percentage,Bar
 
 
-
-# load [raw,segmentation indices]
+# load sentences with tokens boundaries
 def loadTrainSentences(filenameTrain):
 	print("Loading train sentences...")
 	sentences = []
@@ -42,19 +39,20 @@ def loadTrainSentences(filenameTrain):
 	return sentences
 
 
-
-
 # observations on bigrams
 def train(sentences):
 	print("Training the model...")
 	obs = defaultdict(lambda: defaultdict(lambda: 1))
 	prevObs = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 1)))
 	tr = defaultdict(lambda: defaultdict(lambda: 0))
+
 	prevBigram = "start"
 	for raw,indices in sentences:
 		j = 0
 		i = 0
 		cstate = 'B'
+		if indices[0] == 1:
+			soloObs[raw[0]] += 1
 		while i < len(raw) - 1:
 			bigram = raw[i:i+2]
 			if indices[j] == i+1:
@@ -63,6 +61,8 @@ def train(sentences):
 				tr[cstate]['B'] += 1
 				cstate = 'B'
 				prevObs['B'][bigram][prevBigram] += 1
+				if indices[j] - indices[j-1] == 1:
+					soloObs[raw[i+1]] += 1
 			else:
 				obs['C'][bigram] += 1
 				tr[cstate]['C'] += 1
@@ -71,92 +71,10 @@ def train(sentences):
 			i += 1
 			prevBigram = bigram
 
-	return list([obs,tr,prevObs])
+	return [obs,tr,prevObs]
 
 
-
-
-# most probable state for this bigram observation
-def mostProbablePath(model,bigrams):
-	paths = {}
-	cstate = 'B'
-	pvBg = "start"
-	for bg in bigrams:
-		if paths == {}:
-			paths = nextProbas(model,cstate,bg,pvBg)
-		else:
-			newPaths = {}
-			for p in paths:
-				probas = nextProbas(model,cstate,bg,pvBg)
-				for state in probas:
-					newPaths[p+state] = probas[state] * paths[p]
-
-
-
-
-
-def nextProba(model,cstate,bg,prevBg):
-	otherState = 'B' if cstate == 'C' else 'C' 
-	d = False
-	if not bigram in model[0]['B'] or not bigram in model[0]['C']:
-		#print("NOT in dict")
-		cPb = 1
-		for bg in model[0][cstate]:
-			if bigram[0] in bg or bigram[1] in bg:
-				cPb += 1
-		oPb = 1
-		for bg in model[0][otherState]:
-			if bigram[0] in bg or bigram[1] in bg:
-				oPb += 1
-
-		cstatePb = model[2][cstate][prevBigram][bigram] * model[1][cstate][cstate] * cPb
-		otherStatePb = model[2][otherState][prevBigram][bigram] * model[1][cstate][otherState] * oPb
-		if abs((float(min(cstatePb,otherStatePb)) / max(cstatePb,otherStatePb))) < 0.3:
-			d = True
-	
-	if not d:
-		#print("IN dict") 
-		cstatePb = model[2][cstate][prevBigram][bigram] * model[1][cstate][cstate] * model[0][cstate][bigram]
-		otherStatePb = model[2][otherState][prevBigram][bigram] * model[1][cstate][otherState] * model[0][otherState][bigram]
-	
-	#maxPb = cstatePb if cstatePb > otherStatePb else otherStatePb
-	#maxState = cstate if cstatePb > otherStatePb else otherState
-	return dict({cstate:cstatePb,otherState:otherStatePb})
-
-
-'''
-def nextProbas(model,cstate,bg,prevBg):
-	otherState = 'B' if cstate == 'C' else 'C' 
-	d = False
-	if not bigram in model[0]['B'] or not bigram in model[0]['C']:
-		#print("NOT in dict")
-		cPb = 1
-		for bg in model[0][cstate]:
-			if bigram[0] in bg or bigram[1] in bg:
-				cPb += 1
-		oPb = 1
-		for bg in model[0][otherState]:
-			if bigram[0] in bg or bigram[1] in bg:
-				oPb += 1
-
-		cstatePb = model[2][cstate][prevBigram][bigram] * model[1][cstate][cstate] * cPb
-		otherStatePb = model[2][otherState][prevBigram][bigram] * model[1][cstate][otherState] * oPb
-		if abs((float(min(cstatePb,otherStatePb)) / max(cstatePb,otherStatePb))) < 0.3:
-			d = True
-	
-	if not d:
-		#print("IN dict") 
-		cstatePb = model[2][cstate][prevBigram][bigram] * model[1][cstate][cstate] * model[0][cstate][bigram]
-		otherStatePb = model[2][otherState][prevBigram][bigram] * model[1][cstate][otherState] * model[0][otherState][bigram]
-	
-	#maxPb = cstatePb if cstatePb > otherStatePb else otherStatePb
-	#maxState = cstate if cstatePb > otherStatePb else otherState
-	return dict({cstate:cstatePb,otherState:otherStatePb})
-'''
-
-
-
-
+# identify tokens on test sentences
 def test(model,filenameTest):
 	print("Running the test...")
 	foundSentences = []
@@ -167,31 +85,17 @@ def test(model,filenameTest):
 	pvBg = "start"
 	for s in root.findall('sentence'):
 		rawtext = s.find('raw').text
-		#cstate = 'B'
-		#myToken = ''
-		#indices = []
 		bigrams = []
 		i = 0
 		while i < len(rawtext) - 1:
 			bg = rawtext[i:i+2]
 			bigrams.append(bg)
-
-			#if (mostProbable(model,cstate,bg,pvBg)) == 'B':
-			#	indices.append(i+1)
-			#i += 1
-			#pvBg = bg
-
-		paths = buildPaths(model,bigrams)
-		path = mostProbablePath(paths)
+			i += 1
+		path = mostProbablePath(model,bigrams)
 		indices = indicesFromPath(path)
-
-		indices.append(len(rawtext))
-		mySentence = sentencizer(rawtext,indices)
-		foundSentences.append(mySentence)
-
+		foundSentences.append(sentencizer(rawtext,indices))
 		k += 1
 		pbar.update(k)
-
 	handle = codecs.open("grotest.xml", 'w', 'utf-8')
 	handle.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
 	handle.write('<dataset>\n')
@@ -204,8 +108,63 @@ def test(model,filenameTest):
 	handle.close()
 
 
+# most probable sequences of states for this bigram observation
+def mostProbablePath(model,bigrams):
+	path = []
+	probas = {}
+	pvBg = "start"
+	for bg in bigrams:
+		if path == []:
+			probas = dict({'B':model[0]['B'][bg], 'C':model[0]['C'][bg]})
+		nextP = {}
+		for s in ['B','C']:
+			nextProb = nextProbas(model,s,bg,pvBg)
+			proba = max(probas['B'] * nextProb[s],probas['C'] * nextProb[s])
+			nextP[s] = proba
+		path.append(max(nextP, key=nextP.get))
+		probas = nextP
+		pvBg = bg
+	return path
 
 
+# next probabilities for a given state and bigram
+def nextProbas(model,cstate,bigram,prevBigram):
+	observations = model[0]
+	transitions = model[1]
+	prevObservations = model[2]
+	d = False
+	if not bigram in observations['B'] or not bigram in observations['C']:
+		bCoeff = 1
+		for bg in observations['B']:
+			if bigram[0] in bg or bigram[1] in bg:
+				bCoeff += 1
+		cCoeff = 1
+		for bg in observations['C']:
+			if bigram[0] in bg or bigram[1] in bg:
+				cCoeff += 1
+		bPb = prevObservations['B'][prevBigram][bigram] * transitions[cstate]['B'] * bCoeff
+		cPb = prevObservations['C'][prevBigram][bigram] * transitions[cstate]['C'] * cCoeff
+		if abs((float(min(bPb,cPb)) / max(bPb,cPb))) < 0.3:
+			d = True
+	if not d:
+		bPb = prevObservations['B'][prevBigram][bigram] * transitions[cstate]['B'] * observations['B'][bigram]
+		cPb = prevObservations['C'][prevBigram][bigram] * transitions[cstate]['C'] * observations['C'][bigram]
+
+	return dict({'B':bPb,'C':cPb})
+
+
+# get boundaries from sequence fo states
+def indicesFromPath(path):
+	indices = []
+	for i in range(len(path)):
+		if path[i] == 'B':
+			indices.append(i+1)
+	if path[-1] == 'C':
+		indices.append(len(path))
+	return indices
+
+
+# get sentence from tokens boundaries
 def sentencizer(raw,indices):
 	sentence = []
 	ctok = ''
@@ -222,18 +181,14 @@ def sentencizer(raw,indices):
 
 
 
-
-##############################################################################
-
-
+######################
+#		Main         #
+######################
 
 def main():
 	sentences = loadTrainSentences(sys.argv[1])
 	model = train(sentences)
 	test(model,sys.argv[2])
-
-
-
 
 
 if __name__ == '__main__':

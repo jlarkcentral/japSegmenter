@@ -51,8 +51,6 @@ def train(sentences):
 		j = 0
 		i = 0
 		cstate = 'B'
-		if indices[0] == 1:
-			soloObs[raw[0]] += 1
 		while i < len(raw) - 1:
 			bigram = raw[i:i+2]
 			if indices[j] == i+1:
@@ -61,8 +59,6 @@ def train(sentences):
 				tr[cstate]['B'] += 1
 				cstate = 'B'
 				prevObs['B'][bigram][prevBigram] += 1
-				if indices[j] - indices[j-1] == 1:
-					soloObs[raw[i+1]] += 1
 			else:
 				obs['C'][bigram] += 1
 				tr[cstate]['C'] += 1
@@ -133,6 +129,7 @@ def nextProbas(model,cstate,bigram,prevBigram):
 	transitions = model[1]
 	prevObservations = model[2]
 	d = False
+	'''
 	if not bigram in observations['B'] or not bigram in observations['C']:
 		bCoeff = 1
 		for bg in observations['B']:
@@ -146,9 +143,10 @@ def nextProbas(model,cstate,bigram,prevBigram):
 		cPb = prevObservations['C'][prevBigram][bigram] * transitions[cstate]['C'] * cCoeff
 		if abs((float(min(bPb,cPb)) / max(bPb,cPb))) < 0.3:
 			d = True
+	'''
 	if not d:
-		bPb = prevObservations['B'][prevBigram][bigram] * transitions[cstate]['B'] * observations['B'][bigram]
-		cPb = prevObservations['C'][prevBigram][bigram] * transitions[cstate]['C'] * observations['C'][bigram]
+		bPb = transitions[cstate]['B'] * observations['B'][bigram]
+		cPb = transitions[cstate]['C'] * observations['C'][bigram]
 
 	return dict({'B':bPb,'C':cPb})
 

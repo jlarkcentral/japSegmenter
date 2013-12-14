@@ -111,7 +111,7 @@ def test(model,filenameTest):
 		foundSentences.append(sentencizer(rawtext,indices))
 		k += 1
 		pbar.update(k)
-	handle = codecs.open("grotest.xml", 'w', 'utf-8')
+	handle = codecs.open(sys.argv[3], 'w', 'utf-8')
 	handle.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
 	handle.write('<dataset>\n')
 	for i in range(len(foundSentences)):
@@ -206,10 +206,13 @@ def sentencizer(raw,indices):
 ######################
 
 def main():
+	if len(sys.argv) != 4:
+		print("usage:\npython mySegmenter_moreTokens.py <trainfile> <testfile> <output>")
+
 	sentences = loadTrainSentences(sys.argv[1])
-	tokens = loadTokens(sys.argv[2])
+	tokens = loadTokens('japTokens.xml')
 	model = train(sentences,tokens)
-	test(model,sys.argv[3])
+	test(model,sys.argv[2])
 
 
 if __name__ == '__main__':

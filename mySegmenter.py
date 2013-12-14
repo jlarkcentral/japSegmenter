@@ -21,6 +21,8 @@ from collections import defaultdict
 from progressbar import ProgressBar,Percentage,Bar
 
 
+
+
 # load sentences with tokens boundaries
 def loadTrainSentences(filenameTrain):
 	print("Loading train sentences...")
@@ -39,8 +41,18 @@ def loadTrainSentences(filenameTrain):
 	return sentences
 
 
+def loadTokens(filenameTokens):
+	tokens = []
+	tree = ET.parse(filenameTokens)
+	root = tree.getroot()
+	for s in root.findall('si'):
+		tok = s.find('t').text
+		tokens.append(tok)
+	return tokens
+
+
 # observations on bigrams
-def train(sentences):
+def train(sentences,tokens):
 	print("Training the model...")
 	obs = defaultdict(lambda: defaultdict(lambda: 1))
 	prevObs = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 1)))
@@ -66,8 +78,15 @@ def train(sentences):
 				prevObs['C'][bigram][prevBigram] += 1
 			i += 1
 			prevBigram = bigram
+	for tok in tokens:
+		for i in range(len(tok)-1):
+			bigram = tok[i:i+2]
+			obs['C'][bigram] += 1
 
-	return [obs,tr,prevObs]
+	sourdes = ["きゃ","きゅ","きょ","しゃ","しゅ","しょ","ちゃ","ちゅ","ちょ","ひゃ","ひゅ","ひょ",\
+"キャ","キュ","キョ","シャ","シュ","ショ"," チャ","チュ","チョ"," ヒャ","ヒュ","ヒョ"]
+
+	return [obs,tr,prevObs,tokens,sourdes]
 
 
 # identify tokens on test sentences
@@ -125,30 +144,33 @@ def mostProbablePath(model,bigrams):
 
 # next probabilities for a given state and bigram
 def nextProbas(model,cstate,bigram,prevBigram):
-	observations = model[0]
-	transitions = model[1]
-	prevObservations = model[2]
-	d = False
-	'''
-	if not bigram in observations['B'] or not bigram in observations['C']:
-		bCoeff = 1
-		for bg in observations['B']:
-			if bigram[0] in bg or bigram[1] in bg:
-				bCoeff += 1
-		cCoeff = 1
-		for bg in observations['C']:
-			if bigram[0] in bg or bigram[1] in bg:
-				cCoeff += 1
-		bPb = prevObservations['B'][prevBigram][bigram] * transitions[cstate]['B'] * bCoeff
-		cPb = prevObservations['C'][prevBigram][bigram] * transitions[cstate]['C'] * cCoeff
-		if abs((float(min(bPb,cPb)) / max(bPb,cPb))) < 0.3:
-			d = True
-	'''
-	if not d:
-		bPb = transitions[cstate]['B'] * observations['B'][bigram]
-		cPb = transitions[cstate]['C'] * observations['C'][bigram]
+	if bigram in model[4]:
+		return dict({'B':0.0,'C':1.0})
+	else:
+		observations = model[0]
+		transitions = model[1]
+		prevObservations = model[2]
+		d = False
+		'''
+		if not bigram in observations['B'] or not bigram in observations['C']:
+			bCoeff = 1
+			for bg in observations['B']:
+				if bigram[0] in bg or bigram[1] in bg:
+					bCoeff += 1
+			cCoeff = 1
+			for bg in observations['C']:
+				if bigram[0] in bg or bigram[1] in bg:
+					cCoeff += 1
+			bPb = prevObservations['B'][prevBigram][bigram] * transitions[cstate]['B'] * bCoeff
+			cPb = prevObservations['C'][prevBigram][bigram] * transitions[cstate]['C'] * cCoeff
+			if abs((float(min(bPb,cPb)) / max(bPb,cPb))) < 0.3:
+				d = True
+		'''
+		if not d:
+			bPb = transitions[cstate]['B'] * observations['B'][bigram]
+			cPb = transitions[cstate]['C'] * observations['C'][bigram]
 
-	return dict({'B':bPb,'C':cPb})
+		return dict({'B':bPb,'C':cPb})
 
 
 # get boundaries from sequence fo states
@@ -185,8 +207,9 @@ def sentencizer(raw,indices):
 
 def main():
 	sentences = loadTrainSentences(sys.argv[1])
-	model = train(sentences)
-	test(model,sys.argv[2])
+	tokens = loadTokens(sys.argv[2])
+	model = train(sentences,tokens)
+	test(model,sys.argv[3])
 
 
 if __name__ == '__main__':

@@ -136,7 +136,7 @@ def nextProbas(model,cstate,bigram,prevBigram):
 	d = False
 	#if bigram in model[3]:
 		#return dict({'B':0.0,'C':1.0}) 
-	
+	'''
 	if not bigram in observations['B'] or not bigram in observations['C']:
 		bCoeff = 1
 		for bg in observations['B']:
@@ -150,7 +150,7 @@ def nextProbas(model,cstate,bigram,prevBigram):
 		cPb = prevObservations['C'][prevBigram][bigram] * transitions[cstate]['C'] * cCoeff
 		if abs((float(min(bPb,cPb)) / max(bPb,cPb))) < 0.3:
 			d = True
-	
+	'''
 	if not d:
 		bPb = transitions[cstate]['B'] * observations['B'][bigram]
 		cPb = transitions[cstate]['C'] * observations['C'][bigram]
@@ -193,7 +193,7 @@ def sentencizer(raw,indices):
 def main():
 	if len(sys.argv) != 4:
 		print("usage:\npython mySegmenter_baseline.py <trainfile> <testfile> <output>")
-
+		exit()
 	sentences = loadTrainSentences('knbc-train.xml')
 	model = train(sentences)
 	test(model,'knbc-test.xml')

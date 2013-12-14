@@ -83,10 +83,10 @@ def train(sentences,tokens):
 			bigram = tok[i:i+2]
 			obs['C'][bigram] += 1
 
-	sourdes = ["きゃ","きゅ","きょ","しゃ","しゅ","しょ","ちゃ","ちゅ","ちょ","ひゃ","ひゅ","ひょ",\
-"キャ","キュ","キョ","シャ","シュ","ショ"," チャ","チュ","チョ"," ヒャ","ヒュ","ヒョ"]
+	#sourdes = ["きゃ","きゅ","きょ","しゃ","しゅ","しょ","ちゃ","ちゅ","ちょ","ひゃ","ひゅ","ひょ",\
+#"キャ","キュ","キョ","シャ","シュ","ショ"," チャ","チュ","チョ"," ヒャ","ヒュ","ヒョ"]
 
-	return [obs,tr,prevObs,tokens,sourdes]
+	return [obs,tr,prevObs,tokens]#,sourdes]
 
 
 # identify tokens on test sentences

@@ -18,6 +18,9 @@ import xml.sax
 import codecs
 import operator
 from collections import defaultdict
+import uniBlock
+
+
 
 
 
@@ -45,7 +48,7 @@ def train(sentences):
 	obs = defaultdict(lambda: defaultdict(lambda: 1))
 	prevObs = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 1)))
 	tr = defaultdict(lambda: defaultdict(lambda: 0))
-	#sourdes = [u'ゃ',u'ゅ',u'ょ',u'ャ',u'ュ',u'ョ']
+	uniObs = defaultdict(lambda: defaultdict(lambda: 1))
 
 	prevBigram = "start"
 	for raw,indices in sentences:
@@ -67,8 +70,9 @@ def train(sentences):
 				prevObs['C'][bigram][prevBigram] += 1
 			i += 1
 			prevBigram = bigram
+			uniObs[cstate][uniBlock.block(bigram[0]) +'::'+ uniBlock.block(bigram[1])] += 1
 
-	return [obs,tr,prevObs]#,sourdes]
+	return [obs,tr,prevObs,uniObs]
 
 
 # identify tokens on test sentences
@@ -127,12 +131,26 @@ def nextProbas(model,cstate,bigram,prevBigram):
 	observations = model[0]
 	transitions = model[1]
 	prevObservations = model[2]
+	uniObs = model[3]
 	d = False
-	#if bigram[1] in model[3]:
-	#	return dict({'B':0.0,'C':1.0})
+
+	if not bigram in observations['B'] or not bigram in observations['C']:
+		bCoeff = 1
+		for bg in observations['B']:
+			if bigram[1] == bg[1]:
+				bCoeff += 1
+		cCoeff = 1
+		for bg in observations['C']:
+			if bigram[1] == bg[1]:
+				cCoeff += 1
+		bPb = transitions[cstate]['B'] * bCoeff
+		cPb = transitions[cstate]['C'] * cCoeff
+		if abs((float(min(bPb,cPb)) / max(bPb,cPb))) < 0.1:
+			d = True
+
 	if not d:
-		bPb = transitions[cstate]['B'] * observations['B'][bigram]
-		cPb = transitions[cstate]['C'] * observations['C'][bigram]
+		bPb = transitions[cstate]['B'] * observations['B'][bigram] * uniObs['B'][uniBlock.block(bigram[0]) +'::'+ uniBlock.block(bigram[1])]
+		cPb = transitions[cstate]['C'] * observations['C'][bigram] * uniObs['C'][uniBlock.block(bigram[0]) +'::'+ uniBlock.block(bigram[1])]
 
 	return dict({'B':bPb,'C':cPb})
 

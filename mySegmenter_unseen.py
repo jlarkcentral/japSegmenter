@@ -20,9 +20,6 @@ import operator
 from collections import defaultdict
 
 
-
-
-
 # load sentences with tokens boundaries
 def loadTrainSentences(filenameTrain):
 	print("Loading train sentences...")
@@ -41,13 +38,22 @@ def loadTrainSentences(filenameTrain):
 	return sentences
 
 
+def loadTokens(filenameTokens):
+	tokens = []
+	tree = ET.parse(filenameTokens)
+	root = tree.getroot()
+	for s in root.findall('si'):
+		tok = s.find('t').text
+		tokens.append(tok)
+	return tokens
+
+
 # observations on bigrams
 def train(sentences):
 	print("Training the model...")
 	obs = defaultdict(lambda: defaultdict(lambda: 1))
 	prevObs = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 1)))
 	tr = defaultdict(lambda: defaultdict(lambda: 0))
-	sourdes = [u'ゃ',u'ゅ',u'ょ',u'ャ',u'ュ',u'ョ']
 
 	prevBigram = "start"
 	for raw,indices in sentences:
@@ -70,7 +76,7 @@ def train(sentences):
 			i += 1
 			prevBigram = bigram
 
-	return [obs,tr,prevObs,sourdes]
+	return [obs,tr,prevObs]
 
 
 # identify tokens on test sentences
@@ -91,7 +97,6 @@ def test(model,filenameTest):
 		path = mostProbablePath(model,bigrams)
 		indices = indicesFromPath(path)
 		foundSentences.append(sentencizer(rawtext,indices))
-
 	handle = codecs.open(sys.argv[3], 'w', 'utf-8')
 	handle.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
 	handle.write('<dataset>\n')
@@ -112,7 +117,6 @@ def mostProbablePath(model,bigrams):
 	for bg in bigrams:
 		if path == []:
 			probas = dict({'B':model[0]['B'][bg], 'C':model[0]['C'][bg]})
-		
 		nextP = {}
 		for s in ['B','C']:
 			nextProb = nextProbas(model,s,bg,pvBg)
@@ -130,8 +134,21 @@ def nextProbas(model,cstate,bigram,prevBigram):
 	transitions = model[1]
 	prevObservations = model[2]
 	d = False
-	#if bigram[1] in model[3]:
-	#	return dict({'B':0.0,'C':1.0})
+	
+	if not bigram in observations['B'] or not bigram in observations['C']:
+		bCoeff = 1
+		for bg in observations['B']:
+			if bigram[0] in bg or bigram[1] in bg:
+				bCoeff += 1
+		cCoeff = 1
+		for bg in observations['C']:
+			if bigram[0] in bg or bigram[1] in bg:
+				cCoeff += 1
+		bPb = transitions[cstate]['B'] * bCoeff
+		cPb = transitions[cstate]['C'] * cCoeff
+		if abs((float(min(bPb,cPb)) / max(bPb,cPb))) < 0.1:
+			d = True
+	
 	if not d:
 		bPb = transitions[cstate]['B'] * observations['B'][bigram]
 		cPb = transitions[cstate]['C'] * observations['C'][bigram]
@@ -173,12 +190,11 @@ def sentencizer(raw,indices):
 
 def main():
 	if len(sys.argv) != 4:
-		print("usage:\npython mySegmenter_baseline.py <trainfile> <testfile> <output>")
-		exit()
-	sentences = loadTrainSentences('knbc-train.xml')
-	model = train(sentences)
-	test(model,'knbc-test.xml')
+		print("usage:\npython mySegmenter_unseen.py <trainfile> <testfile> <output>")
 
+	sentences = loadTrainSentences(sys.argv[1])
+	model = train(sentences)
+	test(model,sys.argv[2])
 
 if __name__ == '__main__':
     sys.exit(main())

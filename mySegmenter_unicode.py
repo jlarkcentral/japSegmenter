@@ -18,7 +18,8 @@ import xml.sax
 import codecs
 import operator
 from collections import defaultdict
-from progressbar import ProgressBar,Percentage,Bar
+import uniBlock
+
 
 
 
@@ -41,22 +42,13 @@ def loadTrainSentences(filenameTrain):
 	return sentences
 
 
-def loadTokens(filenameTokens):
-	tokens = []
-	tree = ET.parse(filenameTokens)
-	root = tree.getroot()
-	for s in root.findall('si'):
-		tok = s.find('t').text
-		tokens.append(tok)
-	return tokens
-
-
 # observations on bigrams
-def train(sentences,tokens):
+def train(sentences):
 	print("Training the model...")
 	obs = defaultdict(lambda: defaultdict(lambda: 1))
 	prevObs = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 1)))
 	tr = defaultdict(lambda: defaultdict(lambda: 0))
+	uniObs = defaultdict(lambda: defaultdict(lambda: 0))
 
 	prevBigram = "start"
 	for raw,indices in sentences:
@@ -78,15 +70,9 @@ def train(sentences,tokens):
 				prevObs['C'][bigram][prevBigram] += 1
 			i += 1
 			prevBigram = bigram
-	for tok in tokens:
-		for i in range(len(tok)-1):
-			bigram = tok[i:i+2]
-			obs['C'][bigram] += 1
+			uniObs[cstate][uniBlock.block(bigram[0]) +'::'+ uniBlock.block(bigram[1])] += 1
 
-	#sourdes = ["きゃ","きゅ","きょ","しゃ","しゅ","しょ","ちゃ","ちゅ","ちょ","ひゃ","ひゅ","ひょ",\
-#"キャ","キュ","キョ","シャ","シュ","ショ"," チャ","チュ","チョ"," ヒャ","ヒュ","ヒョ"]
-
-	return [obs,tr,prevObs,tokens]#,sourdes]
+	return [obs,tr,prevObs,uniObs]
 
 
 # identify tokens on test sentences
@@ -95,8 +81,6 @@ def test(model,filenameTest):
 	foundSentences = []
 	tree = ET.parse(filenameTest)
 	root = tree.getroot()
-	pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=len(root.findall('sentence'))).start()
-	k = 0
 	pvBg = "start"
 	for s in root.findall('sentence'):
 		rawtext = s.find('raw').text
@@ -109,8 +93,7 @@ def test(model,filenameTest):
 		path = mostProbablePath(model,bigrams)
 		indices = indicesFromPath(path)
 		foundSentences.append(sentencizer(rawtext,indices))
-		k += 1
-		pbar.update(k)
+
 	handle = codecs.open(sys.argv[3], 'w', 'utf-8')
 	handle.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
 	handle.write('<dataset>\n')
@@ -131,6 +114,7 @@ def mostProbablePath(model,bigrams):
 	for bg in bigrams:
 		if path == []:
 			probas = dict({'B':model[0]['B'][bg], 'C':model[0]['C'][bg]})
+		
 		nextP = {}
 		for s in ['B','C']:
 			nextProb = nextProbas(model,s,bg,pvBg)
@@ -144,33 +128,15 @@ def mostProbablePath(model,bigrams):
 
 # next probabilities for a given state and bigram
 def nextProbas(model,cstate,bigram,prevBigram):
-	if bigram in model[4]:
-		return dict({'B':0.0,'C':1.0})
-	else:
-		observations = model[0]
-		transitions = model[1]
-		prevObservations = model[2]
-		d = False
-		'''
-		if not bigram in observations['B'] or not bigram in observations['C']:
-			bCoeff = 1
-			for bg in observations['B']:
-				if bigram[0] in bg or bigram[1] in bg:
-					bCoeff += 1
-			cCoeff = 1
-			for bg in observations['C']:
-				if bigram[0] in bg or bigram[1] in bg:
-					cCoeff += 1
-			bPb = prevObservations['B'][prevBigram][bigram] * transitions[cstate]['B'] * bCoeff
-			cPb = prevObservations['C'][prevBigram][bigram] * transitions[cstate]['C'] * cCoeff
-			if abs((float(min(bPb,cPb)) / max(bPb,cPb))) < 0.3:
-				d = True
-		'''
-		if not d:
-			bPb = transitions[cstate]['B'] * observations['B'][bigram]
-			cPb = transitions[cstate]['C'] * observations['C'][bigram]
+	observations = model[0]
+	transitions = model[1]
+	prevObservations = model[2]
+	uniObs = model[3]
 
-		return dict({'B':bPb,'C':cPb})
+	bPb = transitions[cstate]['B'] * observations['B'][bigram] * uniObs['B'][uniBlock.block(bigram[0]) +'::'+ uniBlock.block(bigram[1])]
+	cPb = transitions[cstate]['C'] * observations['C'][bigram] * uniObs['C'][uniBlock.block(bigram[0]) +'::'+ uniBlock.block(bigram[1])]
+
+	return dict({'B':bPb,'C':cPb})
 
 
 # get boundaries from sequence fo states
@@ -207,12 +173,11 @@ def sentencizer(raw,indices):
 
 def main():
 	if len(sys.argv) != 4:
-		print("usage:\npython mySegmenter_moreTokens.py <trainfile> <testfile> <output>")
-
-	sentences = loadTrainSentences(sys.argv[1])
-	tokens = loadTokens('japTokens.xml')
-	model = train(sentences,tokens)
-	test(model,sys.argv[2])
+		print("usage:\npython mySegmenter_baseline.py <trainfile> <testfile> <output>")
+		exit()
+	sentences = loadTrainSentences('knbc-train.xml')
+	model = train(sentences)
+	test(model,'knbc-test.xml')
 
 
 if __name__ == '__main__':
